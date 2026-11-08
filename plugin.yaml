@@ -1,0 +1,13 @@
+# A pipeline pack (PLAN.md §3.1, §5): the `remind` pipeline. No runtime (schemas decision 18):
+# the pack ships files only, so it needs no network, secret or path, and it proposes no intent
+# itself. The pipeline's `notify.push` intents are proposed by the `obsidian.reminders`
+# transform (planned in plugin-obsidian, see README "Gaps") and applied by plugin-ntfy.
+name: pack-reminders
+version: 0.1.0
+horae: ">=0,<0.2"
+description: The remind pipeline, every 5 minutes and without an LLM.
+license: Apache-2.0
+homepage: https://github.com/horae-dev/pack-reminders
+provides:
+  pipelines: [remind]
+permissions: {}
