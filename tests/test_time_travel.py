@@ -50,7 +50,7 @@ def configure(
                 if quiet is not ...:
                     params.pop("quiet_hours", None)
                     if quiet is not None:
-                        params["quiet_hours"] = {k: v for k, v in quiet.items() if k != "during"}
+                        params["quiet_hours"] = dict(quiet)
             if "notify" in step:
                 params = step["notify"][0]["ntfy.push"]
                 if quiet is not ...:
@@ -273,42 +273,33 @@ def test_quiet_hours_delay_to_seven_and_the_digest_leaves_them_out(make: Make) -
     assert text.count("Bedtime reading") == 2  # its push, then the next morning's nudge
 
 
-def test_quiet_hours_drop_lose_the_night_pushes(make: Make) -> None:
-    """`during: drop`: what is proposed in the quiet hours never reaches the phone. But the
-    lookback is an hour: a reminder of the last hour of the night, dropped by the runs inside the
-    quiet hours, is proposed again by the 07:00 run, which is outside them, and gets through."""
+def test_quiet_hours_drop_send_the_night_reminders_in_the_digest(make: Make) -> None:
+    """`during: drop`: the notifier would drop a push proposed in the quiet hours, so the
+    transform proposes none (nothing is dropped) and the 07:00 digest lists the night's
+    reminders, since the previous digest, under "During quiet hours"."""
     remind = make(edit=configure(quiet={"start": "22:00", "end": "07:00", "during": "drop"}))
     remind.write(NIGHT)
     remind.travel("2026-11-09 21:30", "2026-11-10 09:30")
     assert log(remind) == [
         "2026-11-09 21:55 sent ⏰ 2026-11-09 21:55 | Evening call",
-        "2026-11-10 07:00 sent ⏰ 2026-11-10 06:50 | Early bird",
-        "2026-11-10 07:00 sent ⏰ 2026-11-10 06:59 | Last minute",
         "2026-11-10 07:00 sent ⏰ 2026-11-10 07:00 | Wake up",
-        DIGEST_0710,
+        "2026-11-10 07:00 sent Today, 2026-11-10 | Overdue: 1 / - Evening call (due 2026-11-09)"
+        " / During quiet hours: 4 / - ⏰ 22:00 Bedtime reading / - ⏰ 03:00 Night check"
+        " / - ⏰ 06:50 Early bird / - ⏰ 06:59 Last minute / Today: 2 / - 07:00 Wake up"
+        " / - Plain chore",
         "2026-11-10 09:00 sent Overdue: due 2026-11-09 | Evening call",
         "2026-11-10 09:00 sent Overdue: due 2026-11-09 | Bedtime reading",
     ]
-    dropped = {p.title for p in remind.ntfy.pushes if p.delivery == "dropped"}
-    # Bedtime reading and Night check were lost; Early bird was dropped by the runs from 06:50
-    # to 06:55 and sent by the one at 07:00.
-    assert dropped == {"⏰ 2026-11-09 22:00", "⏰ 2026-11-10 03:00", "⏰ 2026-11-10 06:50"}
+    assert not [p for p in remind.ntfy.pushes if p.delivery == "dropped"]
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="plugin-obsidian's obsidian.reminders accepts quiet_hours.during but ignores it: with "
-    "`during: drop` the notifier drops a reminder proposed in the quiet hours, yet the digest "
-    "still leaves it out ('the notifier delays its own push'), so the reminder is lost "
-    "entirely instead of being listed in the 07:00 digest",
-)
 def test_a_dropped_night_reminder_is_still_in_the_digest(make: Make) -> None:
     remind = make(edit=configure(quiet={"start": "22:00", "end": "07:00", "during": "drop"}))
     remind.write("- [ ] Night check 📅 2026-11-10 ⏰ 03:00\n")
     remind.travel("2026-11-10 02:30", "2026-11-10 07:30")
     assert [p for p in remind.ntfy.phone() if p.title == "⏰ 2026-11-10 03:00"] == []
     digest = [p for p in remind.ntfy.phone() if p.title == "Today, 2026-11-10"]
-    assert [p.body for p in digest] == ["Today: 1\n- 03:00 Night check"]
+    assert [p.body for p in digest] == ["During quiet hours: 1\n- ⏰ 03:00 Night check"]
 
 
 def test_critical_pushes_bypass_the_quiet_hours(make: Make) -> None:

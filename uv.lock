@@ -422,7 +422,7 @@ dev = [
 [[package]]
 name = "horae-plugin-obsidian"
 version = "0.1.0"
-source = { git = "https://github.com/horae-dev/plugin-obsidian?branch=main#132df19304a0b8bfe9aeae7eea000f1bc1b02dfe" }
+source = { git = "https://github.com/horae-dev/plugin-obsidian?branch=main#b8906cfc1f65189ca8ff8b5de4a24989fab3e664" }
 dependencies = [
     { name = "horae-sdk" },
 ]
