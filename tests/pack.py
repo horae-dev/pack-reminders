@@ -3,14 +3,12 @@
 
 What is real (pinned in uv.lock): the core's instance loader, `Runner` (lock, store, apply
 and journal) and engine (planning, templating of `{{now}}` and `{{timezone}}`, routing of
-`notify.push` to the notifier entry), and plugin-obsidian's `open_tasks` reading a fixture
-vault of Markdown files with its own Tasks parser.
+`notify.push` to the notifier entry), and plugin-obsidian, under its own manifest: its
+`open_tasks` reading a fixture vault of Markdown files with its Tasks parser, and its
+`obsidian.reminders` transform.
 
 What stands in:
 
-- `obsidian.reminders`, the transform this pack needs and no plugin provides yet (README
-  "Gaps"): `reminders_reference.reminders`, registered under the planned plugin-obsidian
-  manifest (which adds the transform and the `notify.push` intent it proposes);
 - `ntfy.push`: `NtfyStandIn`, a sink that follows plugin-ntfy's README for what this pack
   relies on (the daily dedupe of a rule, quiet hours with `during: delay`) and records what
   would reach the phone. Its manifest is plugin-ntfy 0.2.0's;
@@ -36,10 +34,10 @@ from horae.engine import LlmRequest, LlmResponse, ToolCallError, ToolResult
 from horae.engine.testing import FixturePlugins
 from horae.runner import Ports, Runner
 from horae.store import Store
+from horae_obsidian import manifest as obsidian_manifest
+from horae_obsidian.reminders import REF, SOURCE, reminders
 from horae_obsidian.source import open_tasks
-from horae_sdk import Paths
-
-from reminders_reference import REF, SOURCE, ReminderError, reminders
+from horae_sdk import Paths, PluginError
 
 ROOT = Path(__file__).resolve().parent.parent
 PIPELINES = ROOT / "pipelines"
@@ -72,33 +70,18 @@ def notify_params(name: str = PIPELINE) -> dict[str, Any]:
     raise AssertionError("no ntfy.push entry")
 
 
-# plugin-obsidian 0.1.0's manifest plus the planned transform and the intent it proposes.
-OBSIDIAN = {
-    "name": "obsidian",
-    "version": "0.2.0",
-    "horae": ">=0,<0.2",
-    "provides": {
-        "sources": [SOURCE],
-        "transforms": [REF],
-        "sinks": ["obsidian.write_note", "obsidian.write_task"],
-    },
-    "permissions": {
-        "intents": [
-            "note.create",
-            "note.append_section",
-            "note.replace_owned_block",
-            "task.create",
-            "task.update_status",
-            "notify.push",
-        ]
-    },
-}
-# plugin-obsidian 0.1.0 as released (main): no transform, no `notify.push`.
-OBSIDIAN_RELEASED = {
+# plugin-obsidian's manifest, as its code declares it (with `obsidian.reminders` and the
+# `notify.push` intent it proposes).
+OBSIDIAN: dict[str, Any] = obsidian_manifest()
+# plugin-obsidian before the transform (0.1.0 as first released): no `obsidian.reminders`, no
+# `notify.push`.
+OBSIDIAN_RELEASED: dict[str, Any] = {
     **OBSIDIAN,
-    "version": "0.1.0",
-    "provides": {"sources": [SOURCE], "sinks": ["obsidian.write_note", "obsidian.write_task"]},
-    "permissions": {"intents": OBSIDIAN["permissions"]["intents"][:-1]},  # type: ignore[index]
+    "provides": {k: v for k, v in OBSIDIAN["provides"].items() if k != "transforms"},
+    "permissions": {
+        **OBSIDIAN["permissions"],
+        "intents": [i for i in OBSIDIAN["permissions"]["intents"] if i != "notify.push"],
+    },
 }
 # plugin-ntfy 0.2.0's manifest (main), without its runtime.
 NTFY = {
@@ -249,7 +232,7 @@ class Remind:
     def _reminders(self, params: dict[str, Any], input: Any) -> ToolResult:
         try:
             data, intents = reminders(params, input)
-        except ReminderError as error:
+        except PluginError as error:  # the plugin's tool error
             raise ToolCallError("tool_error", str(error)) from None
         return ToolResult(data=data, intents=intents)
 

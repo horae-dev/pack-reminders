@@ -26,13 +26,15 @@ dev = [
 # their repositories. uv.lock pins the exact commits (CI checks the lock, so checks are
 # reproducible); Renovate's weekly lock file maintenance moves them to the latest main, or run
 # `uv lock --upgrade-package horae --upgrade-package horae-sdk --upgrade-package
-# horae-plugin-obsidian`. plugin-obsidian is here so the tests read a fixture vault with the
-# real `obsidian.open_tasks` parser (ticked and cancelled tasks are filtered by the real code);
+# horae-plugin-obsidian`. plugin-obsidian is here so the tests run the real `obsidian.open_tasks`
+# parser over a fixture vault and the real `obsidian.reminders` transform, with its golden vectors;
 # horae-sdk is its dependency, which uv takes from the core repository like the plugin does.
 [tool.uv.sources]
 horae = { git = "https://github.com/horae-dev/horae", branch = "main" }
 horae-sdk = { git = "https://github.com/horae-dev/horae", branch = "main", subdirectory = "sdk" }
-horae-plugin-obsidian = { git = "https://github.com/horae-dev/plugin-obsidian", branch = "main" }
+# Pinned to horae-dev/plugin-obsidian#10 (the `obsidian.reminders` transform) until it is merged:
+# then switch back to `branch = "main"` and `uv lock --upgrade-package horae-plugin-obsidian`.
+horae-plugin-obsidian = { git = "https://github.com/horae-dev/plugin-obsidian", rev = "b892459a7fb97953fb4464178689740c72c55211" }
 
 [tool.uv]
 package = false

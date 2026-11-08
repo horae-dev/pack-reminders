@@ -9,9 +9,9 @@ from horae.contracts.pipeline import (
     TransformStep,
     call_parts,
 )
+from horae_obsidian.reminders import REF, SOURCE, parse_params
 
 from pack import NOTIFIER, PIPELINES, manifest, notify_params, pipeline
-from reminders_reference import REF, SOURCE, parse_params
 
 
 def test_the_manifest_is_a_pack_with_no_runtime_and_no_permission() -> None:
@@ -51,12 +51,14 @@ def test_it_runs_every_five_minutes_in_the_instance_time_zone() -> None:
     assert trigger.timezone is None
 
 
-def test_the_steps_call_the_planned_tools_with_valid_parameters() -> None:
+def test_the_steps_call_the_tools_with_valid_parameters() -> None:
     collect, transform, notify = pipeline().steps
     assert isinstance(collect, CollectStep)
     assert isinstance(transform, TransformStep)
     assert isinstance(notify, NotifyStep)
-    assert [call_parts(call)[0] for call in collect.collect] == [SOURCE]
+    ((source, source_params, _),) = [call_parts(call) for call in collect.collect]
+    assert source == SOURCE
+    assert source_params == {"limit": 2000}  # the source's maximum: read every task it can
     ((ref, params, _),) = [call_parts(call) for call in transform.transform]
     assert ref == REF
     assert params["now"] == "{{now}}"
@@ -64,7 +66,12 @@ def test_the_steps_call_the_planned_tools_with_valid_parameters() -> None:
     # The rendered parameters are valid for the transform.
     rendered = {**params, "now": "2026-11-09T13:30:00Z", "timezone": "Europe/Paris"}
     parsed = parse_params(rendered)
-    assert parsed.window_minutes == 5  # the cron interval: the windows tile the day
+    # The lookback covers at least the cron interval (5 minutes), with room for missed runs.
+    assert parsed.window_minutes == 60
+    assert parsed.max_overdue == 10
+    # The transform's quiet hours are the notifier's.
+    quiet = notify_params()["quiet_hours"]
+    assert params["quiet_hours"] == {"start": quiet["start"], "end": quiet["end"]}
     assert [call_parts(call)[0] for call in notify.notify] == [NOTIFIER]
 
 
@@ -78,5 +85,8 @@ def test_the_notifier_dedupes_daily_and_has_quiet_hours() -> None:
     # No proposed push carries a link, so no link_prefix is needed (README "Gaps").
     assert "link_prefix" not in params
     assert params["server"].startswith("https://")
-    # Placeholders only: no real host or topic in the pack.
-    assert params["server"] == "https://ntfy.example.org"
+    # Placeholders only, that fail when copied as they are: a reserved TLD, a loud topic.
+    assert params["server"] == "https://ntfy.invalid"
+    assert params["topic"] == "CHANGE-ME"
+    # One entry for every push: `high`, not `critical` (which would bypass quiet hours).
+    assert params["priority"] == "high"
