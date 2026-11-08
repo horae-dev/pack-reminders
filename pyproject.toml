@@ -32,9 +32,7 @@ dev = [
 [tool.uv.sources]
 horae = { git = "https://github.com/horae-dev/horae", branch = "main" }
 horae-sdk = { git = "https://github.com/horae-dev/horae", branch = "main", subdirectory = "sdk" }
-# Pinned to horae-dev/plugin-obsidian#10 (the `obsidian.reminders` transform) until it is merged:
-# then switch back to `branch = "main"` and `uv lock --upgrade-package horae-plugin-obsidian`.
-horae-plugin-obsidian = { git = "https://github.com/horae-dev/plugin-obsidian", rev = "b892459a7fb97953fb4464178689740c72c55211" }
+horae-plugin-obsidian = { git = "https://github.com/horae-dev/plugin-obsidian", branch = "main" }
 
 [tool.uv]
 package = false

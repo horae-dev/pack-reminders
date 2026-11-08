@@ -411,7 +411,7 @@ dev = [
 [package.metadata.requires-dev]
 dev = [
     { name = "horae", git = "https://github.com/horae-dev/horae?branch=main" },
-    { name = "horae-plugin-obsidian", git = "https://github.com/horae-dev/plugin-obsidian?rev=b892459a7fb97953fb4464178689740c72c55211" },
+    { name = "horae-plugin-obsidian", git = "https://github.com/horae-dev/plugin-obsidian?branch=main" },
     { name = "mypy", specifier = ">=2.4" },
     { name = "pre-commit", specifier = ">=4.7" },
     { name = "pytest", specifier = ">=9.1" },
@@ -422,7 +422,7 @@ dev = [
 [[package]]
 name = "horae-plugin-obsidian"
 version = "0.1.0"
-source = { git = "https://github.com/horae-dev/plugin-obsidian?rev=b892459a7fb97953fb4464178689740c72c55211#b892459a7fb97953fb4464178689740c72c55211" }
+source = { git = "https://github.com/horae-dev/plugin-obsidian?branch=main#132df19304a0b8bfe9aeae7eea000f1bc1b02dfe" }
 dependencies = [
     { name = "horae-sdk" },
 ]
