@@ -172,8 +172,14 @@ def test_the_digest_is_pushed_once_at_seven(remind: Remind) -> None:
     remind.write(OPEN)
     remind.write(TICKED, "Closed.md")
     remind.every_5_minutes(f"{TODAY} 06:45", f"{TODAY} 07:20")
-    proposed = [p for p in remind.ntfy.pushes if p.title == f"Today, {TODAY}"]
-    assert len(proposed) == 5  # every run of the lookback from 07:00, the same text
+    proposed = [
+        r
+        for r in remind.records
+        if any(title == f"Today, {TODAY}" for title, _ in remind.proposed(r))
+    ]
+    assert len(proposed) == 5  # every run of the lookback from 07:00, the same text and key
+    # The core sends the keyed digest once a day: the other four never reach the notifier.
+    assert len([p for p in remind.ntfy.pushes if p.title == f"Today, {TODAY}"]) == 1
     digests = [p for p in remind.ntfy.phone() if p.title == f"Today, {TODAY}"]
     assert len(digests) == 1
     assert digests[0].proposed == datetime.fromisoformat(f"{TODAY} 07:00")
@@ -212,12 +218,19 @@ def test_one_overdue_nudge_per_task_per_day(remind: Remind) -> None:
     for day in (TODAY, "2026-11-10"):
         remind.every_5_minutes(f"{day} 08:30", f"{day} 10:30")
     nudges = [p for p in remind.ntfy.pushes if p.title is not None and "Overdue" in p.title]
-    # Proposed by every run from 09:00 for an hour (12 runs a day), always the same text...
-    proposed_at = sorted({p.proposed for p in nudges})
-    assert len(proposed_at) == 24
-    assert all(at.hour == 9 for at in proposed_at)
-    # ...so plugin-ntfy's daily dedupe lets one per task through. Only the tasks that became
+    # Proposed by every run from 09:00 for an hour (12 runs a day), always the same text and
+    # key `od:<task>:<due>`...
+    proposing = [
+        r.started_at
+        for r in remind.records
+        if any("Overdue" in (title or "") for title, _ in remind.proposed(r))
+    ]
+    assert len(proposing) == 24
+    assert all(at.astimezone(remind.zone).hour == 9 for at in proposing)
+    # ...so the core, not plugin-ntfy, lets one per task and day through: the others are
+    # `duplicate` in the core and never reach the notifier. Only the tasks that became
     # overdue (due the day before) are nudged; older ones are in the digest only.
+    assert len(nudges) == 3
     phone = [(p.delivered.isoformat(), p.title, p.body) for p in remind.ntfy.phone() if p in nudges]
     assert phone == [
         (f"{TODAY}T09:00:00", "Overdue: due 2026-11-08", "Renew the passport"),
@@ -266,7 +279,9 @@ def test_a_reminder_in_quiet_hours_is_delayed_to_their_end(remind: Remind) -> No
     assert push.delivery == "delayed"
     assert push.delivered == datetime.fromisoformat("2026-11-10 07:00")
     # The quiet hours are the pipeline's trusted parameters, handed to the notifier.
-    assert remind.ntfy.params == [notify_params()] * 3  # proposed by 3 runs, 2 duplicates
+    # Proposed by 3 runs; the core sends the keyed push once: the 2 repeats never reach ntfy.
+    assert remind.ntfy.params == [notify_params()]
+    assert len([r for r in remind.records if remind.proposed(r)]) == 3
 
 
 def test_every_push_goes_to_the_one_notifier_entry(remind: Remind) -> None:

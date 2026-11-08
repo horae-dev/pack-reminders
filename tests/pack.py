@@ -11,7 +11,7 @@ What stands in:
 
 - `ntfy.push`: `NtfyStandIn`, a sink that follows plugin-ntfy's README for what this pack
   relies on (the daily dedupe of a rule, quiet hours with `during: delay`) and records what
-  would reach the phone. Its manifest is plugin-ntfy 0.2.0's;
+  would reach the phone. Its manifest is plugin-ntfy 0.3.0's;
 - the model: `GuardLlm`, which fails the test if anything ever calls it.
 """
 
@@ -84,10 +84,10 @@ OBSIDIAN_RELEASED: dict[str, Any] = {
         "intents": [i for i in OBSIDIAN["permissions"]["intents"] if i != "notify.push"],
     },
 }
-# plugin-ntfy 0.2.0's manifest (main), without its runtime.
+# plugin-ntfy 0.3.0's manifest (main), without its runtime.
 NTFY = {
     "name": "ntfy",
-    "version": "0.2.0",
+    "version": "0.3.0",
     "horae": ">=0,<0.2",
     "provides": {"notifiers": [NOTIFIER]},
     "permissions": {
@@ -136,9 +136,13 @@ def _quiet(wall: datetime, start: time, end: time) -> bool:
 class NtfyStandIn:
     """plugin-ntfy's `ntfy.push`, as far as this pack relies on it (plugin-ntfy README):
 
-    - **daily dedupe** (`dedupe: daily`): the rule is the entry's server, topic and priority
-      and the intent's title, body and link; a push is a `duplicate` when it would reach the
-      phone less than one day (local wall clock, to the minute) after the rule's last one;
+    - **keyed pushes** (an intent with a `key`): the core already sends one `dedupe_key` once
+      per local day (repeats are `duplicate` in the core and never reach the sink), so the
+      plugin keeps no reminder state for it, whatever `dedupe` says, and `sequence_id` comes
+      from the core's `dedupe_key` (`sequence_ids`). Quiet hours still apply;
+    - **daily dedupe** (`dedupe: daily`, unkeyed pushes only): the rule is the entry's server,
+      topic and priority and the intent's title, body and link; a push is a `duplicate` when it
+      would reach the phone less than one day (local wall clock, to the minute) after the rule's last one;
     - **quiet hours**: a push that is not `critical` whose local time is in `[start, end)` is,
       with `during: delay` (the default), delivered at the next `end` and counted from then;
       with `during: drop`, never delivered (`dropped`) but recorded like a sent push and counted
@@ -153,6 +157,9 @@ class NtfyStandIn:
     pushes: list[Push] = field(default_factory=list)
     params: list[dict[str, Any]] = field(default_factory=list)
     last: dict[tuple[Any, ...], datetime] = field(default_factory=dict)
+    sequence_ids: list[str | None] = field(default_factory=list)
+    """Per push, the core's `dedupe_key` a keyed push derives its `sequence_id` from (`None`
+    for an unkeyed one, whose sequence id comes from the rule)."""
 
     async def read(self, call: SinkCall) -> bytes | None:
         raise SinkError("not_supported", "a notifier has no target to read")
@@ -162,7 +169,9 @@ class NtfyStandIn:
         assert isinstance(intent, NotifyPush)
         params = call.params
         self.params.append(params)
-        if params.get("dedupe", "daily") != "daily":
+        keyed = intent.key is not None and call.dedupe_key is not None
+        daily = params.get("dedupe", "daily") == "daily" and not keyed
+        if not daily and not keyed and params.get("dedupe") != "off":
             raise SinkError("config_invalid", "this stand-in only models dedupe: daily")
         wall = self.clock().astimezone(self.zone).replace(tzinfo=None, second=0, microsecond=0)
         delivered, delivery = wall, "sent"
@@ -176,6 +185,12 @@ class NtfyStandIn:
                 delivery = "delayed"
                 if quiet.get("during", "delay") == "drop":
                     delivery = "dropped"
+        self.sequence_ids.append(call.dedupe_key if keyed else None)
+        if not daily:  # keyed (or `dedupe: off`): the core deduplicated, nothing to remember
+            self.pushes.append(Push(intent.title, intent.body, wall, delivered, delivery))
+            return Applied(
+                f"{params.get('server')}/{params.get('topic')}", details={"delivery": delivery}
+            )
         rule = (
             params.get("server"),
             params.get("topic"),

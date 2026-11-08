@@ -373,7 +373,7 @@ wheels = [
 [[package]]
 name = "horae"
 version = "0.0.0"
-source = { git = "https://github.com/horae-dev/horae?branch=main#c8d97165efad181c2c28e4af7402ec8d3c17a337" }
+source = { git = "https://github.com/horae-dev/horae?branch=main#648ddb0a21c5998ae84f30200923758dda32d80e" }
 dependencies = [
     { name = "anthropic" },
     { name = "cronsim" },
@@ -422,7 +422,7 @@ dev = [
 [[package]]
 name = "horae-plugin-obsidian"
 version = "0.1.0"
-source = { git = "https://github.com/horae-dev/plugin-obsidian?branch=main#b8906cfc1f65189ca8ff8b5de4a24989fab3e664" }
+source = { git = "https://github.com/horae-dev/plugin-obsidian?branch=main#586e0a36c52d1958da3d903005f798a15d3ec19f" }
 dependencies = [
     { name = "horae-sdk" },
 ]
@@ -430,7 +430,7 @@ dependencies = [
 [[package]]
 name = "horae-sdk"
 version = "0.3.0"
-source = { git = "https://github.com/horae-dev/horae?subdirectory=sdk&branch=main#c8d97165efad181c2c28e4af7402ec8d3c17a337" }
+source = { git = "https://github.com/horae-dev/horae?subdirectory=sdk&branch=main#648ddb0a21c5998ae84f30200923758dda32d80e" }
 dependencies = [
     { name = "anyio" },
     { name = "mcp" },
