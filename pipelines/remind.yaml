@@ -1,0 +1,56 @@
+# pipelines/remind.yaml (pack-reminders): reminders, the morning digest and overdue nudges,
+# PLAN.md §5. Every 5 minutes, deterministic: there is no `llm` step, so no run ever calls a
+# model (the tests check it).
+#
+# Copy this file into your instance's pipelines/ folder (the core does not install pack
+# pipelines yet) and set the ntfy `server` and `topic`: the placeholders below fail loudly.
+# Every parameter is trusted configuration. `{{now}}` and `{{timezone}}` come from the run
+# context (the run's start, and the trigger's time zone, else the instance's), so the
+# transform reads no clock of its own and a replay of a run proposes the same pushes.
+name: remind
+trigger: { cron: "*/5 * * * *" }          # or an external scheduler: `horae run remind`
+steps:
+  # Read: the vault's open tasks (plugin-obsidian). Ticked `[x]` and cancelled `[-]` tasks
+  # are not open, so they are not even collected. 2000 is the source's maximum: tasks past it
+  # (or withheld, or unreadable) are reported, and the digest says "Some tasks could not be
+  # read".
+  - collect:
+      - obsidian.open_tasks: { limit: 2000 }
+  # Decide, without a model (plugin-obsidian's `obsidian.reminders`). It proposes one
+  # `notify.push` per reminder or nudge, and the digest, with stable text (no countdown): the
+  # same push proposed again is a duplicate, which plugin-ntfy's daily dedupe drops.
+  - transform:
+      - obsidian.reminders:
+          now: "{{now}}"
+          timezone: "{{timezone}}"
+          # The lookback: every run proposes what falls in (now - 60 min, now], so a missed
+          # run is caught up by the next one and dedupe drops the repeats. Keep it at least
+          # the cron interval (5 minutes here), or reminders between runs are lost.
+          window_minutes: 60
+          # The morning digest: overdue tasks (a count and the oldest `max_overdue`), then
+          # today's by reminder time. Sent by the first run after 07:00 within the lookback.
+          digest_at: "07:00"
+          # Overdue nudges: one push per task that became overdue yesterday, proposed from
+          # 09:00 for an hour, pushed once a day by plugin-ntfy's `dedupe: daily`. Older
+          # overdue tasks are only in the digest.
+          overdue_at: "09:00"
+          overdue_for_minutes: 60
+          max_overdue: 10
+          # The notifier's quiet hours (keep them equal): a reminder in them arrives as its
+          # own push at their end, so the digest leaves it out.
+          quiet_hours: { start: "22:00", end: "07:00" }
+  # Push. plugin-ntfy applies every `notify.push` (the only notifier entry, so nothing is
+  # ambiguous). `dedupe: daily` is required: it is what makes a push proposed by several
+  # runs of the lookback, or an overdue nudge, reach the phone once a day. Quiet hours delay
+  # a push to their end (07:00). `priority: high` applies to every push (one entry: a second
+  # one for the digest would make every push ambiguous).
+  # `ntfy.invalid` and `CHANGE-ME` are placeholders that fail: use your server (approved
+  # for the plugin in horae.lock) and an unguessable topic (plugin-ntfy README).
+  - notify:
+      - ntfy.push:
+          server: https://ntfy.invalid
+          topic: CHANGE-ME
+          priority: high
+          tags: [alarm_clock]
+          quiet_hours: { start: "22:00", end: "07:00", during: delay }
+          dedupe: daily
