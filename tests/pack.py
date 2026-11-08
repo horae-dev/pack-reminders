@@ -141,8 +141,9 @@ class NtfyStandIn:
       phone less than one day (local wall clock, to the minute) after the rule's last one;
     - **quiet hours**: a push that is not `critical` whose local time is in `[start, end)` is,
       with `during: delay` (the default), delivered at the next `end` and counted from then;
-      with `during: drop`, never delivered (`dropped`; it does not count for the dedupe, but the
-      repeat of a push already delivered is still a `duplicate`);
+      with `during: drop`, never delivered (`dropped`) but recorded like a sent push and counted
+      from the drop: the same push proposed again right after the quiet hours is a `duplicate`
+      (a dropped push is stale by design; it can be pushed a day after the drop);
 
     The daylight-saving details of both (the repeated and skipped hours) are plugin-ntfy's
     own tests; here a wall-clock time is the zone's reading of the instant."""
@@ -184,10 +185,11 @@ class NtfyStandIn:
             intent.link,
         )
         previous = self.last.get(rule)
-        counted = wall if delivery == "dropped" else delivered
-        if previous is not None and counted < previous + timedelta(days=1):
-            delivery = "duplicate"  # already on its way to the phone (or there) today
-        elif delivery != "dropped":
+        if delivery == "dropped":
+            delivered = wall  # counted from the drop
+        if previous is not None and delivered < previous + timedelta(days=1):
+            delivery = "duplicate"  # already on its way to the phone (or dropped) today
+        else:
             self.last[rule] = delivered
         self.pushes.append(Push(intent.title, intent.body, wall, delivered, delivery))
         return Applied(

@@ -71,7 +71,7 @@ def test_the_steps_call_the_tools_with_valid_parameters() -> None:
     assert parsed.max_overdue == 10
     # The transform's quiet hours are the notifier's.
     quiet = notify_params()["quiet_hours"]
-    assert params["quiet_hours"] == {"start": quiet["start"], "end": quiet["end"]}
+    assert params["quiet_hours"] == quiet
     assert [call_parts(call)[0] for call in notify.notify] == [NOTIFIER]
 
 
