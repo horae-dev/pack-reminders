@@ -373,7 +373,7 @@ wheels = [
 [[package]]
 name = "horae"
 version = "0.0.0"
-source = { git = "https://github.com/horae-dev/horae?branch=main#648ddb0a21c5998ae84f30200923758dda32d80e" }
+source = { git = "https://github.com/horae-dev/horae?rev=be93437c83bed2dbcc1b4eb90eb3b044ee985568#be93437c83bed2dbcc1b4eb90eb3b044ee985568" }
 dependencies = [
     { name = "anthropic" },
     { name = "cronsim" },
@@ -410,8 +410,8 @@ dev = [
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "horae", git = "https://github.com/horae-dev/horae?branch=main" },
-    { name = "horae-plugin-obsidian", git = "https://github.com/horae-dev/plugin-obsidian?branch=main" },
+    { name = "horae", git = "https://github.com/horae-dev/horae?rev=be93437c83bed2dbcc1b4eb90eb3b044ee985568" },
+    { name = "horae-plugin-obsidian", git = "https://github.com/horae-dev/plugin-obsidian?rev=7804e0827497f4cb0ec1b62cb627e262126917ad" },
     { name = "mypy", specifier = ">=2.4" },
     { name = "pre-commit", specifier = ">=4.7" },
     { name = "pytest", specifier = ">=9.1" },
@@ -422,7 +422,7 @@ dev = [
 [[package]]
 name = "horae-plugin-obsidian"
 version = "0.1.0"
-source = { git = "https://github.com/horae-dev/plugin-obsidian?branch=main#586e0a36c52d1958da3d903005f798a15d3ec19f" }
+source = { git = "https://github.com/horae-dev/plugin-obsidian?rev=7804e0827497f4cb0ec1b62cb627e262126917ad#7804e0827497f4cb0ec1b62cb627e262126917ad" }
 dependencies = [
     { name = "horae-sdk" },
 ]

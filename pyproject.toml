@@ -30,9 +30,11 @@ dev = [
 # parser over a fixture vault and the real `obsidian.reminders` transform, with its golden vectors;
 # horae-sdk is its dependency, which uv takes from the core repository like the plugin does.
 [tool.uv.sources]
-horae = { git = "https://github.com/horae-dev/horae", branch = "main" }
-horae-sdk = { git = "https://github.com/horae-dev/horae", branch = "main", subdirectory = "sdk" }
-horae-plugin-obsidian = { git = "https://github.com/horae-dev/plugin-obsidian", branch = "main" }
+# TEMPORARY pins to the unmerged fix branches (horae#145, plugin-obsidian#14): back to
+# `branch = "main"` once both are merged.
+horae = { git = "https://github.com/horae-dev/horae", rev = "be93437c83bed2dbcc1b4eb90eb3b044ee985568" }
+horae-sdk = { git = "https://github.com/horae-dev/horae", rev = "be93437c83bed2dbcc1b4eb90eb3b044ee985568", subdirectory = "sdk" }
+horae-plugin-obsidian = { git = "https://github.com/horae-dev/plugin-obsidian", rev = "7804e0827497f4cb0ec1b62cb627e262126917ad" }
 
 [tool.uv]
 package = false

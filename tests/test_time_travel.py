@@ -412,16 +412,6 @@ def test_a_night_reminder_found_after_a_late_wake_up_is_sent_at_once(make: Make)
 # --- configurations that cross midnight ------------------------------------------------------
 
 
-MIDNIGHT = (
-    "The core scopes a keyed push to the local day of the run's start, but `obsidian.reminders` "
-    "keeps proposing, after midnight, the keys of the day before (`digest:<previous date>`, "
-    "`od:<task>:<due>`, `rem:<task>:<previous date>T..`) while their lookback lasts: the core "
-    "derives a new dedupe_key for the new day, so the push is delivered a second time (a stale "
-    "digest). Bug in obsidian.reminders / decision 57, to report upstream."
-)
-
-
-@pytest.mark.xfail(strict=True, reason=MIDNIGHT)
 def test_a_digest_and_nudges_that_cross_midnight(make: Make) -> None:
     """`digest_at: 23:50` and `overdue_at: 23:30` (for two hours), no quiet hours: the runs
     after midnight still belong to the previous day's digest and nudges, which must not be
@@ -445,7 +435,6 @@ def test_a_digest_and_nudges_that_cross_midnight(make: Make) -> None:
     ]
 
 
-@pytest.mark.xfail(strict=True, reason=MIDNIGHT)
 def test_quiet_hours_that_end_after_midnight(make: Make) -> None:
     """Quiet hours 23:00-01:00: the digest at 23:50, a 23:30 and a 00:30 reminder all wait
     for 01:00 and arrive once; the digest leaves out the reminder that has its own push."""
@@ -464,7 +453,6 @@ def test_quiet_hours_that_end_after_midnight(make: Make) -> None:
     ]
 
 
-@pytest.mark.xfail(strict=True, reason=MIDNIGHT)
 def test_a_late_evening_reminder_is_delivered_once_with_the_default_quiet_hours(
     make: Make,
 ) -> None:
