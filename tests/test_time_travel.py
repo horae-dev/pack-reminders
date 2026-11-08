@@ -73,6 +73,16 @@ def log(remind: Remind) -> list[str]:
     ]
 
 
+def proposing(remind: Remind, title: str) -> list[datetime]:
+    """The local times of the runs that proposed a push titled `title`. The core delivers a
+    keyed push once a day, so only the first of them reaches the notifier (`remind.ntfy`)."""
+    return [
+        record.started_at.astimezone(remind.zone).replace(tzinfo=None)
+        for record in remind.records
+        if any(proposed == title for proposed, _ in remind.proposed(record))
+    ]
+
+
 def asleep(remind: Remind, start: str, end: str) -> Callable[[datetime], bool]:
     """The host is asleep from `start` (included) to `end` (excluded): no run in between."""
     first, last = local(start, remind.zone), local(end, remind.zone)
@@ -111,11 +121,13 @@ def test_paris_spring_forward_day(make: Make) -> None:
         "2026-03-30 09:00 sent Overdue: due 2026-03-29 | Water the plants",
     ]
     # The skipped 02:30 is first proposed by the run at 03:00 CEST (01:00 UTC), then by every
-    # run for an hour: 12 runs, 11 of them duplicates.
-    proposals = [p for p in remind.ntfy.pushes if p.title == "⏰ 2026-03-29 02:30"]
+    # run for an hour: 12 runs. The core sends its key (`rem:<task>:2026-03-29T02:30`) once that
+    # day: the 11 repeats never reach the notifier.
+    proposals = proposing(remind, "⏰ 2026-03-29 02:30")
     assert len(proposals) == 12
-    assert proposals[0].proposed == datetime.fromisoformat("2026-03-29 03:00")
-    assert [p.delivery for p in proposals] == ["delayed"] + ["duplicate"] * 11
+    assert proposals[0] == datetime.fromisoformat("2026-03-29 03:00")
+    (first,) = [p for p in remind.ntfy.pushes if p.title == "⏰ 2026-03-29 02:30"]
+    assert first.delivery == "delayed"
 
 
 def test_paris_fall_back_day(make: Make) -> None:
@@ -143,10 +155,12 @@ def test_paris_fall_back_day(make: Make) -> None:
     ]
     first_0230 = local("2026-10-25 02:30")
     assert first_0230.hour == 0  # 00:30 UTC, the CEST one
-    proposals = [p for p in remind.ntfy.pushes if p.title == "⏰ 2026-10-25 02:30"]
+    proposals = proposing(remind, "⏰ 2026-10-25 02:30")
     assert len(proposals) == 12  # an hour of runs, which spans the repeated hour
-    assert proposals[0].proposed == datetime.fromisoformat("2026-10-25 02:30")
-    assert [p.delivery for p in proposals] == ["delayed"] + ["duplicate"] * 11
+    assert proposals[0] == datetime.fromisoformat("2026-10-25 02:30")
+    # The core's day-scoped key is one for the whole 25-hour day: one push, 11 repeats dropped.
+    (first,) = [p for p in remind.ntfy.pushes if p.title == "⏰ 2026-10-25 02:30"]
+    assert first.delivery == "delayed"
     # Of the 25 hours between the two 07:00 digests, none is lost or doubled.
     digests = [p for p in remind.ntfy.phone() if (p.title or "").startswith("Today,")]
     assert [d.delivered for d in digests] == [
@@ -188,9 +202,9 @@ def test_new_york_fall_back_day(make: Make) -> None:
         "2026-11-01 07:00 sent Today, 2026-11-01 | Today: 1 / - 07:30 Walk the dog",
         "2026-11-01 07:30 sent ⏰ 2026-11-01 07:30 | Walk the dog",
     ]
-    proposals = [p for p in remind.ntfy.pushes if p.title == "⏰ 2026-11-01 01:30"]
-    assert len(proposals) == 12  # one hour of runs from the first 01:30, across the repeat
-    assert [p.delivery for p in proposals] == ["delayed"] + ["duplicate"] * 11
+    assert len(proposing(remind, "⏰ 2026-11-01 01:30")) == 12  # an hour of runs, across the repeat
+    (first,) = [p for p in remind.ntfy.pushes if p.title == "⏰ 2026-11-01 01:30"]
+    assert first.delivery == "delayed"
     assert local("2026-11-01 01:30", remind.zone).hour == 5  # the EDT one, 05:30 UTC
 
 
@@ -226,9 +240,10 @@ def test_half_hour_daylight_saving_lord_howe(make: Make) -> None:
         "2026-10-04 07:00 delayed ⏰ 2026-10-04 02:15 | Check the pump",
         "2026-10-04 07:00 delayed ⏰ 2026-10-04 02:45 | Feed the cat",
     ]
-    pump = [p for p in remind.ntfy.pushes if p.title == "⏰ 2026-10-04 02:15"]
-    assert pump[0].proposed == datetime.fromisoformat("2026-10-04 02:30")
+    pump = proposing(remind, "⏰ 2026-10-04 02:15")
+    assert pump[0] == datetime.fromisoformat("2026-10-04 02:30")
     assert len(pump) == 12
+    assert len([p for p in remind.ntfy.pushes if p.title == "⏰ 2026-10-04 02:15"]) == 1
 
 
 # --- quiet hours 22:00-07:00 -----------------------------------------------------------------
@@ -318,7 +333,7 @@ def test_critical_pushes_bypass_the_quiet_hours(make: Make) -> None:
         "2026-11-10 09:00 sent Overdue: due 2026-11-09 | Evening call",
         "2026-11-10 09:00 sent Overdue: due 2026-11-09 | Bedtime reading",
     ]
-    assert {p.delivery for p in remind.ntfy.pushes} == {"sent", "duplicate"}
+    assert {p.delivery for p in remind.ntfy.pushes} == {"sent"}  # nothing delayed or dropped
 
 
 # --- late and skipped runs -------------------------------------------------------------------
@@ -355,9 +370,8 @@ def test_every_other_run_skipped_still_delivers_once(make: Make) -> None:
         "2026-11-09 14:00", "2026-11-09 15:45", skip=lambda moment: moment.minute % 10 == 0
     )
     assert log(remind) == ["2026-11-09 14:35 sent ⏰ 2026-11-09 14:30 | Water the plants"]
-    assert [p.delivery for p in remind.ntfy.pushes][1:] == ["duplicate"] * (
-        len(remind.ntfy.pushes) - 1
-    )
+    assert len(proposing(remind, "⏰ 2026-11-09 14:30")) > 1  # proposed by several runs...
+    assert len(remind.ntfy.pushes) == 1  # ...and the core lets one through
 
 
 @pytest.mark.parametrize(("wake", "delivered"), [("07:55", "07:55"), ("08:05", None)])
@@ -398,9 +412,20 @@ def test_a_night_reminder_found_after_a_late_wake_up_is_sent_at_once(make: Make)
 # --- configurations that cross midnight ------------------------------------------------------
 
 
+MIDNIGHT = (
+    "The core scopes a keyed push to the local day of the run's start, but `obsidian.reminders` "
+    "keeps proposing, after midnight, the keys of the day before (`digest:<previous date>`, "
+    "`od:<task>:<due>`, `rem:<task>:<previous date>T..`) while their lookback lasts: the core "
+    "derives a new dedupe_key for the new day, so the push is delivered a second time (a stale "
+    "digest). Bug in obsidian.reminders / decision 57, to report upstream."
+)
+
+
+@pytest.mark.xfail(strict=True, reason=MIDNIGHT)
 def test_a_digest_and_nudges_that_cross_midnight(make: Make) -> None:
     """`digest_at: 23:50` and `overdue_at: 23:30` (for two hours), no quiet hours: the runs
-    after midnight still belong to the previous day's digest and nudges, and dedupe drops them."""
+    after midnight still belong to the previous day's digest and nudges, which must not be
+    delivered again."""
     remind = make(
         edit=configure(quiet=None, digest_at="23:50", overdue_at="23:30", overdue_for_minutes=120)
     )
@@ -410,17 +435,17 @@ def test_a_digest_and_nudges_that_cross_midnight(make: Make) -> None:
         "- [ ] Book the doctor 📅 2026-11-10\n"
     )
     remind.travel("2026-11-09 23:00", "2026-11-10 01:45")
+    digests = proposing(remind, "Today, 2026-11-09")
+    assert digests[0] == datetime.fromisoformat("2026-11-09 23:50")
+    assert digests[-1] == datetime.fromisoformat("2026-11-10 00:45")  # lookback ends
     assert log(remind) == [
         "2026-11-09 23:30 sent Overdue: due 2026-11-08 | Send the form",
         "2026-11-09 23:50 sent Today, 2026-11-09 | Overdue: 1 / - Send the form (due 2026-11-08)"
         " / Today: 1 / - Pay the rent",
     ]
-    digests = [p for p in remind.ntfy.pushes if p.title == "Today, 2026-11-09"]
-    assert digests[0].proposed == datetime.fromisoformat("2026-11-09 23:50")
-    assert digests[-1].proposed == datetime.fromisoformat("2026-11-10 00:45")  # lookback ends
-    assert {p.delivery for p in digests[1:]} == {"duplicate"}
 
 
+@pytest.mark.xfail(strict=True, reason=MIDNIGHT)
 def test_quiet_hours_that_end_after_midnight(make: Make) -> None:
     """Quiet hours 23:00-01:00: the digest at 23:50, a 23:30 and a 00:30 reminder all wait
     for 01:00 and arrive once; the digest leaves out the reminder that has its own push."""
@@ -437,6 +462,18 @@ def test_quiet_hours_that_end_after_midnight(make: Make) -> None:
         "2026-11-10 01:00 delayed Today, 2026-11-09 | Today: 1 / - Pay the rent",
         "2026-11-10 01:00 delayed ⏰ 2026-11-10 00:30 | Check the oven",
     ]
+
+
+@pytest.mark.xfail(strict=True, reason=MIDNIGHT)
+def test_a_late_evening_reminder_is_delivered_once_with_the_default_quiet_hours(
+    make: Make,
+) -> None:
+    """The default configuration: a ⏰ 23:45 reminder is held to 07:00, once; its lookback
+    runs past midnight, whose runs must not queue it a second time."""
+    remind = make()
+    remind.write("- [ ] Late call 📅 2026-11-09 ⏰ 23:45\n")
+    remind.travel("2026-11-09 23:30", "2026-11-10 08:00")
+    assert log(remind) == ["2026-11-10 07:00 delayed ⏰ 2026-11-09 23:45 | Late call"]
 
 
 # --- a daily recurring reminder over three days ----------------------------------------------
