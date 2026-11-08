@@ -32,7 +32,7 @@ dev = [
 [tool.uv.sources]
 horae = { git = "https://github.com/horae-dev/horae", branch = "main" }
 horae-sdk = { git = "https://github.com/horae-dev/horae", branch = "main", subdirectory = "sdk" }
-horae-plugin-obsidian = { git = "https://github.com/horae-dev/plugin-obsidian", rev = "12e0040f6e37b074a432c233421035228135c4c6" }  # fix/reminders-quiet-drop (plugin-obsidian#12); back to branch = "main" once merged
+horae-plugin-obsidian = { git = "https://github.com/horae-dev/plugin-obsidian", branch = "main" }
 
 [tool.uv]
 package = false
