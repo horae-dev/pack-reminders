@@ -142,7 +142,8 @@ class NtfyStandIn:
       from the core's `dedupe_key` (`sequence_ids`). Quiet hours still apply;
     - **daily dedupe** (`dedupe: daily`, unkeyed pushes only): the rule is the entry's server,
       topic and priority and the intent's title, body and link; a push is a `duplicate` when it
-      would reach the phone less than one day (local wall clock, to the minute) after the rule's last one;
+      would reach the phone less than one day (local wall clock, to the minute) after the
+      rule's last one;
     - **quiet hours**: a push that is not `critical` whose local time is in `[start, end)` is,
       with `during: delay` (the default), delivered at the next `end` and counted from then;
       with `during: drop`, never delivered (`dropped`) but recorded like a sent push and counted
