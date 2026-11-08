@@ -17,7 +17,8 @@ What stands in:
 
 import asyncio
 import shutil
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, time, timedelta
 from pathlib import Path
@@ -118,7 +119,7 @@ class Push:
     delivered: datetime
     """Local wall-clock time of delivery (naive), to the minute."""
     delivery: str
-    """`sent`, `delayed` or `duplicate` (plugin-ntfy's `details.delivery`)."""
+    """`sent`, `delayed`, `dropped` or `duplicate` (plugin-ntfy's `details.delivery`)."""
 
 
 def _hhmm(value: str) -> time:
@@ -138,13 +139,16 @@ class NtfyStandIn:
     - **daily dedupe** (`dedupe: daily`): the rule is the entry's server, topic and priority
       and the intent's title, body and link; a push is a `duplicate` when it would reach the
       phone less than one day (local wall clock, to the minute) after the rule's last one;
-    - **quiet hours** with `during: delay`: a push that is not `critical` whose local time is
-      in `[start, end)` is delivered at the next `end`, and counted from then.
+    - **quiet hours**: a push that is not `critical` whose local time is in `[start, end)` is,
+      with `during: delay` (the default), delivered at the next `end` and counted from then;
+      with `during: drop`, never delivered (`dropped`; it does not count for the dedupe, but the
+      repeat of a push already delivered is still a `duplicate`);
 
     The daylight-saving details of both (the repeated and skipped hours) are plugin-ntfy's
     own tests; here a wall-clock time is the zone's reading of the instant."""
 
     clock: Callable[[], datetime]
+    zone: ZoneInfo = ZONE
     pushes: list[Push] = field(default_factory=list)
     params: list[dict[str, Any]] = field(default_factory=list)
     last: dict[tuple[Any, ...], datetime] = field(default_factory=dict)
@@ -159,17 +163,18 @@ class NtfyStandIn:
         self.params.append(params)
         if params.get("dedupe", "daily") != "daily":
             raise SinkError("config_invalid", "this stand-in only models dedupe: daily")
-        wall = self.clock().astimezone(ZONE).replace(tzinfo=None, second=0, microsecond=0)
+        wall = self.clock().astimezone(self.zone).replace(tzinfo=None, second=0, microsecond=0)
         delivered, delivery = wall, "sent"
         quiet = params.get("quiet_hours")
         if quiet is not None and params.get("priority") != "critical":
-            assert quiet.get("during", "delay") == "delay"
             start, end = _hhmm(quiet["start"]), _hhmm(quiet["end"])
             if _quiet(wall, start, end):
                 delivered = datetime.combine(wall.date(), end)
                 if delivered <= wall:
                     delivered += timedelta(days=1)
                 delivery = "delayed"
+                if quiet.get("during", "delay") == "drop":
+                    delivery = "dropped"
         rule = (
             params.get("server"),
             params.get("topic"),
@@ -179,9 +184,10 @@ class NtfyStandIn:
             intent.link,
         )
         previous = self.last.get(rule)
-        if previous is not None and delivered < previous + timedelta(days=1):
-            delivery = "duplicate"
-        else:
+        counted = wall if delivery == "dropped" else delivered
+        if previous is not None and counted < previous + timedelta(days=1):
+            delivery = "duplicate"  # already on its way to the phone (or there) today
+        elif delivery != "dropped":
             self.last[rule] = delivered
         self.pushes.append(Push(intent.title, intent.body, wall, delivered, delivery))
         return Applied(
@@ -189,35 +195,51 @@ class NtfyStandIn:
         )
 
     def phone(self) -> list[Push]:
-        """What reached (or will reach) the phone: every push but the duplicates."""
-        return [push for push in self.pushes if push.delivery != "duplicate"]
+        """What reached (or will reach) the phone: every push but the duplicates and the
+        dropped ones."""
+        return [push for push in self.pushes if push.delivery not in ("duplicate", "dropped")]
 
 
-def local(text: str) -> datetime:
-    """`"2026-11-09 14:30"` in Paris, as a UTC instant (the first occurrence when repeated)."""
-    return datetime.fromisoformat(text).replace(tzinfo=ZONE).astimezone(UTC)
+def local(text: str, zone: ZoneInfo = ZONE) -> datetime:
+    """`"2026-11-09 14:30"` in Paris (or `zone`), as a UTC instant (the first occurrence when
+    repeated)."""
+    return datetime.fromisoformat(text).replace(tzinfo=zone).astimezone(UTC)
 
 
 class Remind:
     """The `remind` pipeline of a test instance, run at chosen times over a fixture vault."""
 
-    def __init__(self, root: Path) -> None:
+    def __init__(
+        self,
+        root: Path,
+        timezone: str = TIMEZONE,
+        edit: Callable[[dict[str, Any]], None] | None = None,
+    ) -> None:
+        """`timezone` is the instance's; `edit` changes the pipeline's parsed YAML (a copy) before
+        it is loaded, to try other trusted parameters."""
         (root / "pipelines").mkdir(parents=True)
         shutil.copy(PIPELINES / f"{PIPELINE}.yaml", root / "pipelines")
+        if edit is not None:
+            path = root / "pipelines" / f"{PIPELINE}.yaml"
+            document = read_yaml(path)
+            edit(document)
+            path.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
         (root / "horae.yaml").write_text(
-            f"timezone: {TIMEZONE}\nstate_dir: state\n", encoding="utf-8"
+            f"timezone: {timezone}\nstate_dir: state\n", encoding="utf-8"
         )
+        self.zone = ZoneInfo(timezone)
         self.instance: Instance = load_instance(root)
         self.vault = root / "vault"
         self.vault.mkdir()
-        self.now = local("2026-11-09 06:00")
+        self.now = local("2026-11-09 06:00", self.zone)
         self.llm = GuardLlm()
-        self.ntfy = NtfyStandIn(clock=lambda: self.now)
+        self.ntfy = NtfyStandIn(clock=lambda: self.now, zone=self.zone)
         self.plugins = FixturePlugins()
         self.plugins.add(OBSIDIAN, {SOURCE: self._open_tasks, REF: self._reminders})
         self.plugins.add(NTFY)
         self.plugins.add(manifest())
         self.records: list[RunRecord] = []
+        self._session: tuple[Store, asyncio.Runner] | None = None
 
     def write(self, text: str, note: str = "Tasks.md") -> None:
         (self.vault / note).write_text(text, encoding="utf-8")
@@ -225,7 +247,7 @@ class Remind:
     def _open_tasks(self, params: dict[str, Any], input: Any) -> ToolResult:
         # The core starts the plugin with the instance's TZ (the tests set it, conftest.py).
         data = open_tasks(
-            Paths(read=(str(self.vault),)), **params, clock=lambda: self.now.astimezone(ZONE)
+            Paths(read=(str(self.vault),)), **params, clock=lambda: self.now.astimezone(self.zone)
         )
         return ToolResult(data=data)
 
@@ -236,19 +258,30 @@ class Remind:
             raise ToolCallError("tool_error", str(error)) from None
         return ToolResult(data=data, intents=intents)
 
+    @contextmanager
+    def session(self) -> Iterator[None]:
+        """Keep the store and the event loop open across the runs inside (a long time travel);
+        each run still gets its own `Runner`, as each cron run is a new process."""
+        with Store.open(self.instance.store_path) as store, asyncio.Runner() as loop:
+            self._session = (store, loop)
+            try:
+                yield
+            finally:
+                self._session = None
+
     def run(self, at: datetime | str, *, check: bool = True) -> RunRecord:
         """One run started at `at` (a UTC instant, or a Paris wall-clock time); with `check`,
         it must succeed."""
-        self.now = local(at) if isinstance(at, str) else at
-        with Store.open(self.instance.store_path) as store:
-            ports = Ports(
-                self.plugins,
-                self.plugins,
-                self.llm,
-                sinks=StaticSinks({NOTIFIER: self.ntfy}),
-            )
-            runner = Runner(self.instance, store, ports, clock=lambda: self.now)
-            record = asyncio.run(runner.run(PIPELINE))
+        self.now = local(at, self.zone) if isinstance(at, str) else at
+        if self._session is None:
+            with self.session():
+                return self.run(at, check=check)
+        store, loop = self._session
+        ports = Ports(
+            self.plugins, self.plugins, self.llm, sinks=StaticSinks({NOTIFIER: self.ntfy})
+        )
+        runner = Runner(self.instance, store, ports, clock=lambda: self.now)
+        record = loop.run(runner.run(PIPELINE))
         if check:
             assert record.status in ("ok", "noop"), (record.status, [s.error for s in record.steps])
         self.records.append(record)
@@ -257,10 +290,40 @@ class Remind:
     def every_5_minutes(self, start: str, end: str) -> None:
         """Runs at every multiple of 5 minutes (UTC) from `start` to `end` (Paris), as cron
         `*/5` fires (offsets are whole hours here)."""
-        moment, last = local(start), local(end)
+        self.travel(start, end)
+
+    def travel(
+        self,
+        start: str,
+        end: str,
+        *,
+        every: int = 5,
+        skip: Callable[[datetime], bool] | None = None,
+        edits: dict[str, Callable[[], None]] | None = None,
+    ) -> None:
+        """Time travel: a run every `every` minutes from `start` to `end` (local times), unless
+        `skip(instant)` (the host was asleep), the clock being the run's instant and the ntfy
+        dedupe state carried from run to run. `edits` maps a local time to a change of the
+        vault, made just before the first run at or after it (the user ticks a task)."""
+        moment, last = local(start, self.zone), local(end, self.zone)
+        pending = sorted((local(at, self.zone), edit) for at, edit in (edits or {}).items())
+        with self.session():
+            self._travel(moment, last, every, skip, pending)
+
+    def _travel(
+        self,
+        moment: datetime,
+        last: datetime,
+        every: int,
+        skip: Callable[[datetime], bool] | None,
+        pending: list[tuple[datetime, Callable[[], None]]],
+    ) -> None:
         while moment <= last:
-            self.run(moment)
-            moment += timedelta(minutes=5)
+            while pending and pending[0][0] <= moment:
+                pending.pop(0)[1]()
+            if skip is None or not skip(moment):
+                self.run(moment)
+            moment += timedelta(minutes=every)
 
     def proposed(self, record: RunRecord) -> list[tuple[str | None, str]]:
         """The pushes `record` proposed: (title, body)."""
