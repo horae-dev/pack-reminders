@@ -4,7 +4,7 @@
 
 Horae pipeline pack: reminders, daily digest and overdue nudges from the vault, without an LLM.
 
-> 🚧 **Early (0.1.0, unreleased).** The pipeline needs plugin-obsidian's `obsidian.reminders` transform, which is in review ([plugin-obsidian#10](https://github.com/horae-dev/plugin-obsidian/pull/10)). The tests run the pipeline through the core's `Runner` with plugin-obsidian's real task parser and transform, pinned to that pull request's commit in `uv.lock`. Once it is merged, the pin goes back to `main`.
+> 🚧 **Early (0.1.1, unreleased).** The pipeline needs plugin-obsidian's `obsidian.reminders` transform, which is in review ([plugin-obsidian#10](https://github.com/horae-dev/plugin-obsidian/pull/10)). The tests run the pipeline through the core's `Runner` with plugin-obsidian's real task parser and transform, pinned to that pull request's commit in `uv.lock`. Once it is merged, the pin goes back to `main`.
 
 ## What it does
 
