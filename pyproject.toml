@@ -1,6 +1,6 @@
 [project]
 name = "horae-pack-reminders"
-version = "0.1.0"
+version = "0.1.1"
 description = "Horae pipeline pack: reminders, a morning digest and overdue nudges from the vault, without an LLM."
 readme = "README.md"
 license = "Apache-2.0"
@@ -22,22 +22,24 @@ dev = [
     "types-pyyaml>=6",
 ]
 
-# horae, horae-sdk and plugin-obsidian are not on PyPI yet: they come from the main branches of
-# their repositories. uv.lock pins the exact commits (CI checks the lock, so checks are
-# reproducible); Renovate's weekly lock file maintenance moves them to the latest main, or run
-# `uv lock --upgrade-package horae --upgrade-package horae-sdk --upgrade-package
-# horae-plugin-obsidian`. plugin-obsidian is here so the tests run the real `obsidian.open_tasks`
-# parser over a fixture vault and the real `obsidian.reminders` transform, with its golden vectors;
-# horae-sdk is its dependency, which uv takes from the core repository like the plugin does.
+# horae and plugin-obsidian are not on PyPI yet: they come from the main branches of their
+# repositories. uv.lock pins the exact commits (CI checks the lock, so checks are reproducible);
+# Renovate's weekly lock file maintenance moves them to the latest main, or run
+# `uv lock --upgrade-package horae --upgrade-package horae-plugin-obsidian`. plugin-obsidian is
+# here so the tests run the real `obsidian.open_tasks` parser over a fixture vault and the real
+# `obsidian.reminders` transform, with its golden vectors. horae-sdk, their dependency, comes
+# from PyPI.
 [tool.uv.sources]
 horae = { git = "https://github.com/horae-dev/horae", branch = "main" }
-horae-sdk = { git = "https://github.com/horae-dev/horae", branch = "main", subdirectory = "sdk" }
 horae-plugin-obsidian = { git = "https://github.com/horae-dev/plugin-obsidian", branch = "main" }
 
 [tool.uv]
 package = false
 required-version = ">=0.13"
-exclude-newer = "7 days"
+# No exclude-newer here: the 7-day cooldown on new releases is Renovate's minimumReleaseAge
+# (renovate.json), as in the plugins, where `horae plugin add` runs `uv sync --locked
+# --no-config` and would not match a lock resolved with it. `package = false`: the
+# environment is a dev-only virtual project, the pack itself is never installed through uv.
 
 [tool.ruff]
 line-length = 100
