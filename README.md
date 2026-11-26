@@ -4,7 +4,9 @@
 
 Horae pipeline pack: reminders, daily digest and overdue nudges from the vault, without an LLM.
 
-> 🚧 **Early (0.1.1, unreleased).** The pipeline needs plugin-obsidian's `obsidian.reminders` transform, which is in review ([plugin-obsidian#10](https://github.com/horae-dev/plugin-obsidian/pull/10)). The tests run the pipeline through the core's `Runner` with plugin-obsidian's real task parser and transform, pinned to that pull request's commit in `uv.lock`. Once it is merged, the pin goes back to `main`.
+**Docs:** <https://horae-dev.github.io/docs/plugins/pack-reminders/>
+
+> 🚧 **Early (0.1.1, tagged; listing in the marketplace proposed in [marketplace#39](https://github.com/horae-dev/marketplace/pull/39)).** The pipeline needs plugin-obsidian's `obsidian.reminders` transform, merged in [plugin-obsidian#10](https://github.com/horae-dev/plugin-obsidian/pull/10) and released in plugin-obsidian 0.2.x. The tests run the pipeline through the core's `Runner` with plugin-obsidian's real task parser and transform, from plugin-obsidian's `main` (pinned in `uv.lock`).
 
 ## What it does
 
@@ -56,10 +58,10 @@ steps:
 
 ## Install
 
-Not yet (see the banner). Once `obsidian.reminders` is released:
+By hand, for now:
 
-1. Copy [`pipelines/remind.yaml`](pipelines/remind.yaml) into your instance's `pipelines/` folder (the core does not install pack pipelines yet). Replace the placeholders `https://ntfy.invalid` and `CHANGE-ME` with your ntfy server and an unguessable topic. As shipped they fail, so a copy that was not edited never pushes anywhere.
-2. Install plugin-obsidian (the vault approved as its `paths.write`) and plugin-ntfy, with **a state directory approved for plugin-ntfy** (`paths.write` in `horae.lock`): `dedupe: daily` needs it, and this pack relies on it (plugin-ntfy README, "Reminder state").
+1. Copy [`pipelines/remind.yaml`](pipelines/remind.yaml) into your instance's `pipelines/` folder. Replace the placeholders `https://ntfy.invalid` and `CHANGE-ME` with your ntfy server and an unguessable topic. As shipped they fail, so a copy that was not edited never pushes anywhere. Installing the pack with `horae plugin add` would not help yet: the installed pipeline is pinned by its SHA-256 in `horae.lock` and the loader refuses an edited copy, so its placeholders could not be replaced (the same problem as [pack-daily-brief#10](https://github.com/horae-dev/pack-daily-brief/issues/10)).
+2. Install plugin-obsidian (`horae plugin add obsidian --allow-path /path/to/your/vault`) and plugin-ntfy, with **a state directory granted to plugin-ntfy** (`horae plugin add ntfy --allow-path /path/to/ntfy-state`): `dedupe: daily` needs it, and this pack relies on it (plugin-ntfy README, "Reminder state").
 3. Set `timezone` in `horae.yaml`: the windows, the digest and quiet hours are all local times.
 4. Run it with the built-in scheduler (`horae serve`) or an external one every 5 minutes (`horae run remind`), with a push monitor (`scheduler.monitors.remind`). The 60-minute lookback catches up a few missed runs. If you change the cron interval, keep `window_minutes` at least as long as the interval: checking that is up to you.
 
@@ -91,13 +93,12 @@ The transform lives in plugin-obsidian (`horae_obsidian.reminders`); its README 
 
 ## Gaps
 
-1. **plugin-obsidian is pinned to a pull request's commit** ([plugin-obsidian#10](https://github.com/horae-dev/plugin-obsidian/pull/10)) until that PR is merged. After the merge, set `branch = "main"` in `pyproject.toml` and run `uv lock --upgrade-package horae-plugin-obsidian`.
-2. **Once a day relies on plugin-ntfy's `dedupe: daily`.** The core gives a pipeline without an LLM step a new `dedupe_key` on every run, so the lookback's repeats are dropped only by plugin-ntfy's reminder state. That state needs a `paths.write` directory approved in `horae.lock`. A stable rule key from the core is proposed in horae#123. If the task list changes within the digest's lookback (a task ticked at 07:30), the new text is a new digest.
-3. **A missed run longer than the lookback is a missed reminder.** The core's scheduler never catches up a missed fire time (decision 49 D). The push monitor is what reports missed runs.
-4. **No deep links, no Done / Snooze buttons.** A push carries no `link`. An `obsidian://` link needs a `link_prefix` on the entry, and plugin-ntfy does not send it yet (plugin-ntfy#4). Action buttons need the core's signed `/act` links (horae#38, PR horae#115, open).
-5. **Withheld tasks never remind.** plugin-obsidian withholds a task whose key is not unique (its decision 17), so a copy-pasted task line gets no reminder until the duplicate is removed. The digest then says "Some tasks could not be read".
-6. **Wording is not localised**: English titles and ISO dates (`Overdue: due 2026-11-05`).
-7. **Not used yet**: the `⏳` scheduled and `🛫` start dates, and a bare `⏰ HH:MM` without a due date (no reminder).
+1. **Once a day relies on plugin-ntfy's `dedupe: daily`.** The core gives a pipeline without an LLM step a new `dedupe_key` on every run, so the lookback's repeats are dropped only by plugin-ntfy's reminder state. That state needs a `paths.write` directory approved in `horae.lock`. A stable rule key from the core is proposed in horae#123. If the task list changes within the digest's lookback (a task ticked at 07:30), the new text is a new digest.
+2. **A missed run longer than the lookback is a missed reminder.** The core's scheduler never catches up a missed fire time (decision 49 D). The push monitor is what reports missed runs.
+3. **No deep links, no Done / Snooze buttons in this pipeline.** plugin-ntfy sends both since plugin-ntfy#4, on the core's signed `/act` links (horae#38), but the `remind` entry does not use them yet: a push carries no `link` (the entry has no `link_prefix`), and the buttons need what plugin-ntfy's README lists (`http.public_url`, `HORAE_ACT_KEY`).
+4. **Withheld tasks never remind.** plugin-obsidian withholds a task whose key is not unique (its decision 17), so a copy-pasted task line gets no reminder until the duplicate is removed. The digest then says "Some tasks could not be read".
+5. **Wording is not localised**: English titles and ISO dates (`Overdue: due 2026-11-05`).
+6. **Not used yet**: the `⏳` scheduled and `🛫` start dates, and a bare `⏰ HH:MM` without a due date (no reminder).
 
 The full time-travel suite (many days, every daylight-saving and quiet-hours edge) is #3.
 
